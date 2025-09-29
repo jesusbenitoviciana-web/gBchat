@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
 
 const app = express();
 app.use(express.static(__dirname));
@@ -28,7 +29,8 @@ wss.on('connection', ws => {
       broadcast({type:'users', users: Array.from(users.values())});
     } else if(data.type === 'message'){
       const name = users.get(ws) || 'Desconocido';
-      broadcast({type:'message', name, text:data.text, when: Date.now()});
+      // data.text puede ser texto o imagen (base64)
+      broadcast({type:'message', name, text:data.text, when: Date.now(), isImage: data.isImage||false});
     }
   });
 
