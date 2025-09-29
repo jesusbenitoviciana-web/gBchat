@@ -104,3 +104,28 @@ function tryConnect(){
   ws.addEventListener('error',()=>{addSystemMessage('Error de WebSocket.'); statusEl.textContent='Error';});
 }
 
+function sendReaction(emoji){
+  if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'message', text:emoji}));
+}
+
+if(joinForm) joinForm.addEventListener('submit',e=>{e.preventDefault();const v=nameInput.value.trim();if(!v) return alert('Ingresa un nombre');username=v;joinOverlay.style.display='none';tryConnect();});
+
+if(form) form.addEventListener('submit',e=>{
+  e.preventDefault();
+  if(!ws || ws.readyState!==WebSocket.OPEN){addSystemMessage('No hay conexión'); return;}
+  const txt=input.value.trim();
+  if(txt) ws.send(JSON.stringify({type:'message', text:txt}));
+  if(imgInput.files.length>0){
+    const file = imgInput.files[0];
+    const reader = new FileReader();
+    reader.onload = ()=> ws.send(JSON.stringify({type:'message', text:reader.result, isImage:true}));
+    reader.readAsDataURL(file);
+  }
+  input.value='';
+  imgInput.value='';
+});
+});
+</script>
+
+</body>
+</html>
