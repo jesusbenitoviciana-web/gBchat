@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat Bonito Responsive</title>
+<title>Chat Mejorado</title>
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;}
 .app{max-width:900px;margin:20px auto;background:#fff;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;height:90vh;}
@@ -16,7 +16,7 @@ header{background:#4f46e5;color:#fff;padding:14px 18px;display:flex;justify-cont
 .meta{font-size:12px;color:#6b7280;}
 .input-area{display:flex;padding:12px;border-top:1px solid #e5e7eb;}
 input[type=text],#input{flex:1;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-right:8px;}
-button{background:#4f46e5;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;}
+button{background:#4f46e5;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;margin-left:4px;}
 .join-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;}
 .join-card{background:#fff;padding:22px;border-radius:10px;width:90%;max-width:320px;box-shadow:0 10px 30px rgba(0,0,0,.3);}
 .you{font-weight:600;color:#10b981;}
@@ -51,10 +51,14 @@ button{background:#4f46e5;color:#fff;border:none;padding:10px 14px;border-radius
       <form id="form" class="input-area">
         <input id="input" type="text" placeholder="Escribe un mensaje..." />
         <button type="submit">Enviar</button>
+        <button type="button" onclick="sendReaction('👍')">👍</button>
+        <button type="button" onclick="sendReaction('❤️')">❤️</button>
       </form>
     </main>
   </div>
 </div>
+
+<audio id="msgSound" src="https://www.myinstants.com/media/sounds/pling.mp3" preload="auto"></audio>
 
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
@@ -67,21 +71,19 @@ const usersEl=document.getElementById('users');
 const messagesEl=document.getElementById('messages');
 const form=document.getElementById('form');
 const input=document.getElementById('input');
+const msgSound=document.getElementById('msgSound');
+
 let ws=null,username='',reconnectAttempts=0,MAX_RECONNECT=5;
+const userColors={};
 
 function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function addSystemMessage(text){const el=document.createElement('div');el.className='message';el.innerHTML=`<div class="meta sys">${escapeHtml(text)}</div>`;messagesEl.appendChild(el);messagesEl.scrollTop=messagesEl.scrollHeight;}
+function getUserColor(name){if(!userColors[name]){const colors=['#f87171','#60a5fa','#34d399','#facc15','#a78bfa'];userColors[name]=colors[Math.floor(Math.random()*colors.length)];}return userColors[name];}
 function renderUsers(users){if(!users||users.length===0)usersEl.innerHTML='(ninguno)';else usersEl.innerHTML=users.map(u=>u===username?`<div class="you">${u} (tú)</div>`:`<div>${u}</div>`).join('');}
-function addMessage(msg){const el=document.createElement('div');el.className='message';const time=msg.when?new Date(msg.when).toLocaleTimeString():'';el.innerHTML=`<div class="meta">${escapeHtml(msg.name)} · ${time}</div><div>${escapeHtml(msg.text)}</div>`;messagesEl.appendChild(el);messagesEl.scrollTop=messagesEl.scrollHeight;}
+function addMessage(msg){const el=document.createElement('div');el.className='message';const time=msg.when?new Date(msg.when).toLocaleTimeString():'';el.innerHTML=`<div class="meta" style="color:${getUserColor(msg.name)}">${escapeHtml(msg.name)} · ${time}</div><div>${escapeHtml(msg.text)}</div>`;messagesEl.appendChild(el);messagesEl.scrollTop=messagesEl.scrollHeight;if(msg.name!==username)msgSound.play();}
+function tryConnect(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;ws=new WebSocket(WS_URL);ws.addEventListener('open',()=>{statusEl.textContent='Conectado';reconnectAttempts=0;if(username)ws.send(JSON.stringify({type:'join',name:username}));});ws.addEventListener('message',(ev)=>{let data;try{data=JSON.parse(ev.data);}catch(e){return;}if(data.type==='users')renderUsers(data.users);else if(data.type==='message')addMessage(data);else if(data.type==='system')addSystemMessage(data.text);});ws.addEventListener('close',()=>{statusEl.textContent='Desconectado';if(reconnectAttempts<MAX_RECONNECT){const delay=Math.pow(2,reconnectAttempts)*1000;addSystemMessage(`Conexión cerrada. Reintentando en ${delay/1000}s...`);reconnectAttempts++;setTimeout(tryConnect,delay);}else addSystemMessage('No se pudo reconectar. Refresca la página.');});ws.addEventListener('error',(err)=>{addSystemMessage('Error de WebSocket. Revisa que el servidor esté corriendo.');statusEl.textContent='Error';});}
 
-function tryConnect(){
-if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
-ws=new WebSocket(WS_URL);
-ws.addEventListener('open',()=>{statusEl.textContent='Conectado';reconnectAttempts=0;if(username)ws.send(JSON.stringify({type:'join',name:username}));});
-ws.addEventListener('message',(ev)=>{let data;try{data=JSON.parse(ev.data);}catch(e){return;}if(data.type==='users')renderUsers(data.users);else if(data.type==='message')addMessage(data);else if(data.type==='system')addSystemMessage(data.text);});
-ws.addEventListener('close',()=>{statusEl.textContent='Desconectado';if(reconnectAttempts<MAX_RECONNECT){const delay=Math.pow(2,reconnectAttempts)*1000;addSystemMessage(`Conexión cerrada. Reintentando en ${delay/1000}s...`);reconnectAttempts++;setTimeout(tryConnect,delay);}else addSystemMessage('No se pudo reconectar. Refresca la página.');});
-ws.addEventListener('error',(err)=>{addSystemMessage('Error de WebSocket. Revisa que el servidor esté corriendo.');statusEl.textContent='Error';});
-}
+function sendReaction(emoji){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'message',text:emoji}));}
 
 if(joinForm)joinForm.addEventListener('submit',(e)=>{e.preventDefault();const v=nameInput.value.trim();if(!v)return alert('Ingresa un nombre');username=v;joinOverlay.style.display='none';tryConnect();});
 if(form)form.addEventListener('submit',(e)=>{e.preventDefault();const txt=input.value.trim();if(!txt)return;if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'message',text:txt}));else addSystemMessage('No se pudo enviar: no hay conexión.');input.value='';});
