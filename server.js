@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const app = express();
@@ -8,6 +9,21 @@ app.use(express.static(__dirname));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
+
+// Abrir DB SQLite
+const db = new sqlite3.Database(path.join(__dirname, 'chat.db'), err => {
+  if(err) console.error(err);
+  else console.log('Base de datos lista');
+});
+
+// Crear tabla mensajes si no existe
+db.run(`CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT,
+  text TEXT,
+  isImage INTEGER,
+  timestamp INTEGER
+)`);
 
 let users = new Map();
 
@@ -18,7 +34,22 @@ function broadcast(data){
   });
 }
 
+function loadMessages(ws){
+  db.all("SELECT * FROM messages ORDER BY timestamp ASC", [], (err, rows) => {
+    if(err) return console.error(err);
+    ws.send(JSON.stringify({type:'history', messages:rows.map(r=>({
+      type:'message',
+      name:r.name,
+      text:r.text,
+      isImage:!!r.isImage,
+      when:r.timestamp
+    }))}));
+  });
+}
+
 wss.on('connection', ws => {
+  loadMessages(ws);
+
   ws.on('message', message => {
     let data;
     try { data = JSON.parse(message); } catch(e){ return; }
@@ -29,8 +60,13 @@ wss.on('connection', ws => {
       broadcast({type:'users', users: Array.from(users.values())});
     } else if(data.type === 'message'){
       const name = users.get(ws) || 'Desconocido';
-      // data.text puede ser texto o imagen (base64)
-      broadcast({type:'message', name, text:data.text, when: Date.now(), isImage: data.isImage||false});
+      const timestamp = Date.now();
+      db.run("INSERT INTO messages(name,text,isImage,timestamp) VALUES (?,?,?,?)",
+        [name, data.text, data.isImage?1:0, timestamp], err => {
+          if(err) console.error(err);
+          const msgObj = {type:'message', name, text:data.text, isImage:data.isImage||false, when:timestamp};
+          broadcast(msgObj);
+        });
     }
   });
 
@@ -45,4 +81,4 @@ wss.on('connection', ws => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor escuchando en http://localhost:${PORT}`));
+server.listen(PORT, ()=>console.log(`Servidor escuchando en http://localhost:${PORT}`));
